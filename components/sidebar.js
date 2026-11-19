@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -9,7 +8,7 @@ const navigation = [
   {
     label: "Dashboard",
     href: "/dashboard",
-    icon: "▦",
+    icon: "◫",
   },
   {
     label: "Customers",
@@ -20,6 +19,11 @@ const navigation = [
     label: "Transactions",
     href: "/transactions",
     icon: "⇄",
+  },
+  {
+    label: "Services",
+    href: "/services",
+    icon: "▣",
   },
 ];
 
@@ -111,7 +115,7 @@ export default function Sidebar() {
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50"
           >
-            <span className="text-lg">↪</span>
+            <span className="text-lg">⇥</span>
             Sign out
           </button>
         </div>
