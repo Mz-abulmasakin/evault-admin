@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -66,30 +67,52 @@ function getIdentifier(request) {
 
   return String(
     request.request_id ??
-    request.requestId ??
-    request.id ??
-    request.reference ??
-    ""
+      request.requestId ??
+      request.id ??
+      request.reference ??
+      ""
   );
 }
 
 function getServiceType(request) {
   return String(
     request?.service_type ??
-    request?.serviceType ??
-    request?.type ??
-    "SERVICE"
+      request?.serviceType ??
+      request?.type ??
+      "SERVICE"
   ).toUpperCase();
 }
 
 function getCustomerName(request) {
   return (
-    request?.full_name ??
     request?.customer_name ??
+    request?.full_name ??
     request?.user_full_name ??
     request?.customer?.full_name ??
     request?.user?.full_name ??
     "Customer"
+  );
+}
+
+function getCustomerEmail(request) {
+  return (
+    request?.customer_email ??
+    request?.email ??
+    request?.user_email ??
+    request?.customer?.email ??
+    request?.user?.email ??
+    "No email supplied"
+  );
+}
+
+function getCustomerPhone(request) {
+  return (
+    request?.customer_phone ??
+    request?.phone_number ??
+    request?.phone ??
+    request?.customer?.phone_number ??
+    request?.user?.phone_number ??
+    "No phone number supplied"
   );
 }
 
@@ -143,6 +166,52 @@ function formatStatus(value) {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+function formatLabel(value) {
+  return String(value || "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function parseDetails(value) {
+  if (!value) return {};
+
+  if (typeof value === "object") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+function formatValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return "Not provided";
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (Array.isArray(value)) {
+    return value.length ? `${value.length} item(s)` : "None";
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+}
+
 function StatusBadge({ status }) {
   const value = String(status || "PENDING").toUpperCase();
 
@@ -181,6 +250,333 @@ function SectionHeading({ title, subtitle }) {
   );
 }
 
+function DetailField({ label, value, wide = false }) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    typeof value === "object"
+  ) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`rounded-xl border border-slate-100 bg-slate-50 p-3 ${
+        wide ? "sm:col-span-2" : ""
+      }`}
+    >
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+        {label}
+      </p>
+      <p className="mt-2 whitespace-pre-wrap break-words text-sm font-semibold text-[#142747]">
+        {formatValue(value)}
+      </p>
+    </div>
+  );
+}
+
+function DocumentLink({ document }) {
+  const url = document?.downloadUrl || document?.download_url;
+  const name = getDocumentName(document);
+
+  if (!url) {
+    return (
+      <span className="text-[10px] font-semibold text-slate-400">
+        Download link unavailable
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="shrink-0 rounded-lg bg-[#edf3ff] px-3 py-2 text-[10px] font-bold text-[#2a5fd3] hover:bg-blue-100"
+      onClick={(event) => event.stopPropagation()}
+      download={name}
+    >
+      View / Download
+    </a>
+  );
+}
+
+function GenericDetails({ details }) {
+  const excludedKeys = new Set([
+    "personnel",
+    "proposedNames",
+    "proposed_names",
+    "officeAddress",
+    "office_address",
+    "businessNature",
+    "business_nature",
+    "shareCapital",
+    "share_capital",
+  ]);
+
+  const entries = Object.entries(details || {}).filter(
+    ([key, value]) =>
+      !excludedKeys.has(key) &&
+      value !== null &&
+      value !== undefined &&
+      value !== "" &&
+      ![
+        "storage_path",
+        "storage_bucket",
+        "password",
+        "token",
+      ].includes(key.toLowerCase())
+  );
+
+  if (!entries.length) return null;
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-extrabold text-[#142747]">
+          Additional Application Information
+        </h3>
+        <p className="mt-1 text-[10px] text-slate-400">
+          Other information submitted with this application.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {entries.map(([key, value]) => {
+          if (typeof value === "object") {
+            return (
+              <div
+                key={key}
+                className="rounded-xl border border-slate-100 p-3 sm:col-span-2"
+              >
+                <p className="text-[10px] font-bold uppercase text-slate-400">
+                  {formatLabel(key)}
+                </p>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words text-xs text-slate-700">
+                  {JSON.stringify(value, null, 2)}
+                </pre>
+              </div>
+            );
+          }
+
+          return (
+            <DetailField
+              key={key}
+              label={formatLabel(key)}
+              value={value}
+            />
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PersonnelDocuments({ documents, personnelIndex }) {
+  const related = documents.filter((document) => {
+    const metadata = document?.metadata || {};
+
+    const index =
+      metadata.personnelIndex ??
+      metadata.personnel_index;
+
+    return Number(index) === Number(personnelIndex);
+  });
+
+  if (!related.length) {
+    return (
+      <p className="mt-3 text-[10px] text-slate-400">
+        No personnel documents were linked to this record.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {related.map((document, index) => (
+        <div
+          key={document.id || index}
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-3"
+        >
+          <div className="min-w-0">
+            <p className="break-words text-xs font-semibold text-slate-700">
+              {formatLabel(document.document_type || "Personnel document")}
+            </p>
+            <p className="mt-1 break-all text-[10px] text-slate-400">
+              {getDocumentName(document)}
+            </p>
+          </div>
+          <DocumentLink document={document} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PersonnelSection({ personnel, documents }) {
+  if (!Array.isArray(personnel) || personnel.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-extrabold text-[#142747]">
+          Directors / Personnel
+        </h3>
+        <p className="mt-1 text-[10px] text-slate-400">
+          {personnel.length} personnel member(s) supplied.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {personnel.map((person, index) => (
+          <div
+            key={`${person?.nin || person?.fullName || "person"}-${index}`}
+            className="rounded-xl border border-slate-200 p-4"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-extrabold text-[#2a5fd3]">
+                Personnel {index + 1}
+              </p>
+              <span className="rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-500">
+                {person?.role || "Personnel"}
+              </span>
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <DetailField
+                label="Full Name"
+                value={person?.fullName ?? person?.full_name}
+              />
+              <DetailField
+                label="Role"
+                value={person?.role}
+              />
+              <DetailField
+                label="NIN"
+                value={person?.nin}
+                wide
+              />
+            </div>
+
+            <PersonnelDocuments
+              documents={documents}
+              personnelIndex={index}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ApplicationDetails({ request, documents }) {
+  const details = parseDetails(request?.details);
+  const proposedNames =
+    details.proposedNames ??
+    details.proposed_names;
+
+  const personnel =
+    details.personnel ??
+    details.directors ??
+    details.trustees ??
+    [];
+
+  const hasCacFields =
+    proposedNames ||
+    details.officeAddress ||
+    details.office_address ||
+    details.businessNature ||
+    details.business_nature ||
+    details.shareCapital ||
+    details.share_capital;
+
+  const detailEntries = Object.keys(details).length > 0;
+
+  if (!detailEntries) {
+    return (
+      <div className="rounded-xl bg-amber-50 p-4">
+        <p className="text-xs font-bold text-amber-800">
+          No application details were returned by the server.
+        </p>
+        <p className="mt-1 text-[10px] leading-relaxed text-amber-700">
+          The request record does not contain a readable details object.
+          Check the backend request-details response if this is unexpected.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {hasCacFields && (
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-extrabold text-[#142747]">
+              Business / Registration Information
+            </h3>
+            <p className="mt-1 text-[10px] text-slate-400">
+              Information supplied in the application form.
+            </p>
+          </div>
+
+          {Array.isArray(proposedNames) && (
+            <div className="rounded-xl border border-slate-100 p-4">
+              <p className="text-[10px] font-bold uppercase text-slate-400">
+                Proposed Business Names
+              </p>
+              <div className="mt-2 space-y-2">
+                {proposedNames.map((name, index) => (
+                  <p
+                    key={`${name}-${index}`}
+                    className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-[#142747]"
+                  >
+                    {index + 1}. {formatValue(name)}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {typeof proposedNames === "string" && (
+            <DetailField
+              label="Proposed Business Name"
+              value={proposedNames}
+              wide
+            />
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <DetailField
+              label="Office Address"
+              value={details.officeAddress ?? details.office_address}
+              wide
+            />
+            <DetailField
+              label="Business Nature"
+              value={details.businessNature ?? details.business_nature}
+              wide
+            />
+            <DetailField
+              label="Share Capital"
+              value={details.shareCapital ?? details.share_capital}
+            />
+          </div>
+        </section>
+      )}
+
+      <PersonnelSection
+        personnel={personnel}
+        documents={documents}
+      />
+
+      <GenericDetails details={details} />
+    </div>
+  );
+}
+
 export default function ServicesPage() {
   const [requests, setRequests] = useState([]);
   const [selectedId, setSelectedId] = useState("");
@@ -198,6 +594,7 @@ export default function ServicesPage() {
   const [message, setMessage] = useState("");
 
   const [nextStatus, setNextStatus] = useState("UNDER_REVIEW");
+  const [rejectionReason, setRejectionReason] = useState("");
   const [uploadFiles, setUploadFiles] = useState([]);
 
   const selectedDocuments = useMemo(
@@ -219,20 +616,28 @@ export default function ServicesPage() {
       const payload = response.data;
 
       if (payload?.success === false) {
-        throw new Error(payload.message || "Unable to load request details.");
+        throw new Error(
+          payload.message || "Unable to load request details."
+        );
       }
 
       const request = extractRequest(payload);
 
       setSelectedRequest(request);
+
+      const currentStatus = String(
+        request?.status || "PENDING"
+      ).toUpperCase();
+
       setNextStatus(
-        String(request?.status || "UNDER_REVIEW").toUpperCase() ===
-          "UNDER_REVIEW"
+        currentStatus === "UNDER_REVIEW"
           ? "PROCESSING"
           : "UNDER_REVIEW"
       );
     } catch (err) {
-      setError(err.message || "Unable to load service request details.");
+      setError(
+        err.message || "Unable to load service request details."
+      );
     } finally {
       setDetailLoading(false);
     }
@@ -268,7 +673,9 @@ export default function ServicesPage() {
       const payload = response.data;
 
       if (payload?.success === false) {
-        throw new Error(payload.message || "Unable to load service requests.");
+        throw new Error(
+          payload.message || "Unable to load service requests."
+        );
       }
 
       const rows = extractRequests(payload);
@@ -300,7 +707,9 @@ export default function ServicesPage() {
     const identifier = getIdentifier(request);
 
     if (!identifier) {
-      setError("This request does not have a usable request identifier.");
+      setError(
+        "This request does not have a usable request identifier."
+      );
       return;
     }
 
@@ -315,6 +724,11 @@ export default function ServicesPage() {
 
     if (!selectedId || !nextStatus) return;
 
+    if (nextStatus === "REJECTED" && !rejectionReason.trim()) {
+      setError("Enter a reason before rejecting this application.");
+      return;
+    }
+
     setActionLoading(true);
     setError("");
     setMessage("");
@@ -322,7 +736,13 @@ export default function ServicesPage() {
     try {
       const response = await api.patch(
         `/admin/services/requests/${encodeURIComponent(selectedId)}/status`,
-        { status: nextStatus }
+        {
+          status: nextStatus,
+          rejectionReason:
+            nextStatus === "REJECTED"
+              ? rejectionReason.trim()
+              : undefined,
+        }
       );
 
       if (response.data?.success === false) {
@@ -332,11 +752,14 @@ export default function ServicesPage() {
       }
 
       setMessage("Service request status updated successfully.");
+      setRejectionReason("");
 
       await loadDetails(selectedId);
       await loadRequests();
     } catch (err) {
-      setError(err.message || "Unable to update service request status.");
+      setError(
+        err.message || "Unable to update service request status."
+      );
     } finally {
       setActionLoading(false);
     }
@@ -373,7 +796,8 @@ export default function ServicesPage() {
 
       if (response.data?.success === false) {
         throw new Error(
-          response.data.message || "Unable to upload completed documents."
+          response.data.message ||
+            "Unable to upload completed documents."
         );
       }
 
@@ -386,7 +810,9 @@ export default function ServicesPage() {
       await loadDetails(selectedId);
       await loadRequests();
     } catch (err) {
-      setError(err.message || "Unable to upload completed documents.");
+      setError(
+        err.message || "Unable to upload completed documents."
+      );
     } finally {
       setActionLoading(false);
     }
@@ -422,7 +848,8 @@ export default function ServicesPage() {
       );
 
       if (!response.ok) {
-        let serverMessage = "Unable to download the request documents.";
+        let serverMessage =
+          "Unable to download the request documents.";
 
         try {
           const payload = await response.json();
@@ -435,14 +862,25 @@ export default function ServicesPage() {
       }
 
       const blob = await response.blob();
+
+      if (!blob.size) {
+        throw new Error("The server returned an empty ZIP file.");
+      }
+
       const objectUrl = window.URL.createObjectURL(blob);
 
-      const disposition = response.headers.get("content-disposition") || "";
-      const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
+      const disposition =
+        response.headers.get("content-disposition") || "";
 
-      const filename =
-        filenameMatch?.[1] ||
-        `${getReference(selectedRequest)}-documents.zip`;
+      const filenameMatch = disposition.match(
+        /filename\*?=(?:UTF-8''|")?([^";]+)/i
+      );
+
+      const filename = filenameMatch?.[1]
+        ? decodeURIComponent(
+            filenameMatch[1].replace(/"/g, "")
+          )
+        : `${getReference(selectedRequest)}-documents.zip`;
 
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
@@ -451,22 +889,23 @@ export default function ServicesPage() {
       anchor.click();
       anchor.remove();
 
-      window.URL.revokeObjectURL(objectUrl);
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(objectUrl);
+      }, 1000);
 
       setMessage("Request documents downloaded successfully.");
     } catch (err) {
-      setError(err.message || "Unable to download request documents.");
+      setError(
+        err.message || "Unable to download request documents."
+      );
     } finally {
       setActionLoading(false);
     }
   }
 
-  const displayedDocuments = selectedDocuments;
-
   return (
     <ProtectedLayout>
       <main className="min-h-full space-y-6 bg-[#f6f8fc] pb-10">
-        {/* PAGE HEADER */}
         <section className="rounded-[24px] bg-gradient-to-br from-[#142e59] via-[#1d478f] to-[#2a5fd3] px-6 py-7 text-white shadow-sm sm:px-8">
           <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
             <div>
@@ -495,7 +934,6 @@ export default function ServicesPage() {
           </div>
         </section>
 
-        {/* FEEDBACK */}
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -508,7 +946,6 @@ export default function ServicesPage() {
           </div>
         )}
 
-        {/* SERVICE TYPE FILTER */}
         <section className="rounded-2xl border border-[#e7edf7] bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
             {SERVICE_TYPES.map((type) => (
@@ -528,7 +965,6 @@ export default function ServicesPage() {
           </div>
         </section>
 
-        {/* SEARCH AND STATUS FILTER */}
         <section className="grid gap-3 rounded-2xl border border-[#e7edf7] bg-white p-4 shadow-sm sm:grid-cols-[1fr_220px_auto]">
           <input
             type="text"
@@ -563,9 +999,7 @@ export default function ServicesPage() {
           </button>
         </section>
 
-        {/* REQUEST LIST AND DETAILS */}
         <section className="grid items-start gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-          {/* REQUEST LIST */}
           <div className="overflow-hidden rounded-2xl border border-[#e7edf7] bg-white shadow-sm">
             <div className="border-b border-slate-100 p-5">
               <SectionHeading
@@ -585,7 +1019,7 @@ export default function ServicesPage() {
               </div>
             ) : requests.length === 0 ? (
               <div className="px-5 py-14 text-center">
-                <div className="text-3xl text-slate-300">▣</div>
+                <div className="text-3xl text-slate-300">⌕</div>
                 <p className="mt-3 text-sm font-bold text-slate-600">
                   No service requests found
                 </p>
@@ -640,7 +1074,6 @@ export default function ServicesPage() {
             )}
           </div>
 
-          {/* REQUEST DETAILS */}
           <div className="space-y-5">
             <section className="overflow-hidden rounded-2xl border border-[#e7edf7] bg-white shadow-sm">
               <div className="border-b border-slate-100 p-5">
@@ -652,7 +1085,7 @@ export default function ServicesPage() {
 
               {!selectedId ? (
                 <div className="px-5 py-14 text-center">
-                  <div className="text-3xl text-slate-300">▤</div>
+                  <div className="text-3xl text-slate-300">⌕</div>
                   <p className="mt-3 text-sm font-bold text-slate-600">
                     No application selected
                   </p>
@@ -682,72 +1115,95 @@ export default function ServicesPage() {
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl bg-slate-50 p-4">
-                      <p className="text-[10px] font-bold uppercase text-slate-400">
-                        Service Type
-                      </p>
-                      <p className="mt-2 text-sm font-extrabold text-[#142747]">
-                        {getServiceType(selectedRequest)}
-                      </p>
-                    </div>
+                    <DetailField
+                      label="Service Type"
+                      value={getServiceType(selectedRequest)}
+                    />
 
-                    <div className="rounded-xl bg-slate-50 p-4">
-                      <p className="text-[10px] font-bold uppercase text-slate-400">
-                        Submitted
-                      </p>
-                      <p className="mt-2 text-xs font-bold text-[#142747]">
-                        {formatDate(
+                    <DetailField
+                      label="Entity Type"
+                      value={
+                        selectedRequest?.entity_type ??
+                        selectedRequest?.entityType
+                      }
+                    />
+
+                    <DetailField
+                      label="Submitted"
+                      value={formatDate(
+                        selectedRequest?.submitted_at ||
                           selectedRequest?.created_at ||
                           selectedRequest?.createdAt
-                        )}
-                      </p>
-                    </div>
+                      )}
+                    />
 
-                    <div className="rounded-xl bg-slate-50 p-4 sm:col-span-2">
-                      <p className="text-[10px] font-bold uppercase text-slate-400">
-                        Customer
-                      </p>
-                      <p className="mt-2 text-sm font-extrabold text-[#142747]">
-                        {getCustomerName(selectedRequest)}
-                      </p>
-                      <p className="mt-1 break-all text-xs text-slate-500">
-                        {selectedRequest?.email ||
-                          selectedRequest?.user_email ||
-                          selectedRequest?.customer?.email ||
-                          "No email supplied"}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {selectedRequest?.phone_number ||
-                          selectedRequest?.phone ||
-                          selectedRequest?.customer?.phone_number ||
-                          ""}
-                      </p>
-                    </div>
+                    <DetailField
+                      label="Last Updated"
+                      value={formatDate(selectedRequest?.updated_at)}
+                    />
+
+                    <DetailField
+                      label="Completed At"
+                      value={formatDate(selectedRequest?.completed_at)}
+                    />
+
+                    <DetailField
+                      label="Payment Status"
+                      value={selectedRequest?.payment_status}
+                    />
+
+                    <DetailField
+                      label="Amount"
+                      value={
+                        selectedRequest?.amount !== null &&
+                        selectedRequest?.amount !== undefined
+                          ? `${selectedRequest.currency || "NGN"} ${Number(
+                              selectedRequest.amount
+                            ).toLocaleString("en-NG")}`
+                          : null
+                      }
+                    />
                   </div>
 
-                  {(selectedRequest?.business_name ||
-                    selectedRequest?.company_name ||
-                    selectedRequest?.entity_name) && (
-                    <div className="rounded-xl border border-slate-100 p-4">
-                      <p className="text-[10px] font-bold uppercase text-slate-400">
-                        Business / Entity
+                  <div className="rounded-xl border border-slate-100 p-4">
+                    <p className="text-[10px] font-bold uppercase text-slate-400">
+                      Customer Information
+                    </p>
+
+                    <p className="mt-2 text-sm font-extrabold text-[#142747]">
+                      {getCustomerName(selectedRequest)}
+                    </p>
+
+                    <p className="mt-2 break-all text-xs text-slate-500">
+                      {getCustomerEmail(selectedRequest)}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      {getCustomerPhone(selectedRequest)}
+                    </p>
+
+                    {selectedRequest?.customer_username && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Username: {selectedRequest.customer_username}
                       </p>
-                      <p className="mt-2 text-sm font-bold text-[#142747]">
-                        {selectedRequest.business_name ||
-                          selectedRequest.company_name ||
-                          selectedRequest.entity_name}
-                      </p>
-                    </div>
-                  )}
+                    )}
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-5">
+                    <ApplicationDetails
+                      request={selectedRequest}
+                      documents={selectedDocuments}
+                    />
+                  </div>
 
                   <div className="border-t border-slate-100 pt-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-extrabold text-[#142747]">
-                          Submitted Documents
+                          Application Documents
                         </h3>
                         <p className="mt-1 text-[10px] text-slate-400">
-                          {displayedDocuments.length} document(s) recorded
+                          {selectedDocuments.length} document(s) recorded
                         </p>
                       </div>
 
@@ -755,48 +1211,54 @@ export default function ServicesPage() {
                         type="button"
                         onClick={downloadRequestZip}
                         disabled={
-                          actionLoading || displayedDocuments.length === 0
+                          actionLoading || selectedDocuments.length === 0
                         }
                         className="rounded-xl border border-[#dce7ff] bg-[#f4f7ff] px-3 py-2.5 text-[10px] font-bold text-[#2a5fd3] transition hover:bg-[#eaf0ff] disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Download ZIP
+                        {actionLoading ? "Please wait..." : "Download ZIP"}
                       </button>
                     </div>
 
-                    {displayedDocuments.length === 0 ? (
+                    {selectedDocuments.length === 0 ? (
                       <p className="mt-4 rounded-xl bg-slate-50 px-4 py-5 text-center text-xs text-slate-400">
                         No documents are attached to this request.
                       </p>
                     ) : (
                       <div className="mt-3 space-y-2">
-                        {displayedDocuments.map((document, index) => (
+                        {selectedDocuments.map((document, index) => (
                           <div
                             key={document.id || index}
-                            className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3"
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3"
                           >
                             <div className="min-w-0">
-                              <p className="truncate text-xs font-bold text-slate-700">
+                              <p className="break-words text-xs font-bold text-slate-700">
                                 {getDocumentName(document)}
                               </p>
                               <p className="mt-1 text-[10px] text-slate-400">
+                                {formatLabel(
+                                  document.document_type || "Document"
+                                )}
+                                {" · "}
                                 {document.mime_type ||
                                   document.mimeType ||
-                                  "Document"}
+                                  "File"}
                               </p>
                             </div>
 
-                            <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-500">
-                              {document.uploaded_by_admin_id
-                                ? "COMPLETED"
-                                : "SUBMITTED"}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-500">
+                                {document.uploaded_by_admin_id
+                                  ? "COMPLETED"
+                                  : "SUBMITTED"}
+                              </span>
+                              <DocumentLink document={document} />
+                            </div>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
 
-                  {/* STATUS UPDATE */}
                   <form
                     onSubmit={updateStatus}
                     className="space-y-3 border-t border-slate-100 pt-5"
@@ -810,32 +1272,41 @@ export default function ServicesPage() {
                       </p>
                     </div>
 
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <select
-                        value={nextStatus}
-                        onChange={(event) =>
-                          setNextStatus(event.target.value)
-                        }
-                        className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs outline-none focus:border-[#2a5fd3]"
-                      >
-                        {STATUS_ACTIONS.map((item) => (
-                          <option key={item.value} value={item.value}>
-                            {item.label}
-                          </option>
-                        ))}
-                      </select>
+                    <select
+                      value={nextStatus}
+                      onChange={(event) =>
+                        setNextStatus(event.target.value)
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs outline-none focus:border-[#2a5fd3]"
+                    >
+                      {STATUS_ACTIONS.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
 
-                      <button
-                        type="submit"
-                        disabled={actionLoading}
-                        className="rounded-xl bg-[#2a5fd3] px-5 py-3 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {actionLoading ? "Updating..." : "Update Status"}
-                      </button>
-                    </div>
+                    {nextStatus === "REJECTED" && (
+                      <textarea
+                        value={rejectionReason}
+                        onChange={(event) =>
+                          setRejectionReason(event.target.value)
+                        }
+                        placeholder="Enter the reason for rejecting this application..."
+                        rows={3}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-3 text-xs outline-none focus:border-[#2a5fd3]"
+                      />
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={actionLoading}
+                      className="w-full rounded-xl bg-[#2a5fd3] px-5 py-3 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {actionLoading ? "Updating..." : "Update Status"}
+                    </button>
                   </form>
 
-                  {/* COMPLETED DOCUMENT UPLOAD */}
                   <form
                     onSubmit={uploadCompletedDocuments}
                     className="space-y-3 border-t border-slate-100 pt-5"
@@ -845,7 +1316,7 @@ export default function ServicesPage() {
                         Upload Completed Documents
                       </h3>
                       <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
-                        Attach the completed certificates, reports or other
+                        Attach completed certificates, reports or other
                         customer documents. Uploading these files completes
                         the request through the backend workflow.
                       </p>
@@ -881,7 +1352,9 @@ export default function ServicesPage() {
 
                     <button
                       type="submit"
-                      disabled={actionLoading || uploadFiles.length === 0}
+                      disabled={
+                        actionLoading || uploadFiles.length === 0
+                      }
                       className="w-full rounded-xl bg-emerald-600 px-5 py-3 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {actionLoading
